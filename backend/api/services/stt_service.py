@@ -1,10 +1,7 @@
 from google.cloud import speech_v1
-import os
 
 class STTService:
     def __init__(self):
-        # You'll need to set up Google Cloud credentials
-        # os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "path/to/your/credentials.json"
         self.client = speech_v1.SpeechClient()
     
     def transcribe(self, audio_file):
