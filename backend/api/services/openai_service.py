@@ -31,39 +31,52 @@ class OpenAIService:
         """Extract topics and their relationships from text"""
         try:
             prompt = """
-            Analyze the following conversation and extract key topics and their relationships.
-            Return the result as a JSON array of objects with the following structure:
+            Analyze this text and extract key topics and their relationships.
+            Format the response EXACTLY as a JSON array of objects with this structure:
             [
                 {
                     "topic": "main topic",
                     "related_topics": ["related topic 1", "related topic 2"],
-                    "relationship_type": "describes/contains/relates to/etc"
+                    "relationship_type": "describes/contains/relates to"
                 }
             ]
-            
+
             Text to analyze:
             {text}
+
+            Remember: Response must be valid JSON array only, no other text.
             """.format(text=text)
 
+            print(f"\nExtracting topics from: {text}")
+            
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": "You are a topic extraction specialist."},
+                    {"role": "system", "content": "You are a topic extraction specialist. Return only valid JSON arrays."},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.3,
                 max_tokens=300
             )
             
-            # Parse the response into JSON
             topics_str = response.choices[0].message.content.strip()
-            return json.loads(topics_str)
+            print(f"OpenAI response: {topics_str}")
             
-        except json.JSONDecodeError:
-            print("Failed to parse OpenAI response as JSON")
+            topics = json.loads(topics_str)
+            print(f"Parsed topics: {topics}")
+            
+            if not topics:  # If empty array
+                print("⚠️ No topics extracted")
+                return []
+                
+            return topics
+                
+        except json.JSONDecodeError as e:
+            print(f"❌ JSON parsing error: {e}")
+            print(f"Raw response: {topics_str}")
             return []
         except Exception as e:
-            print(f"Topic extraction error: {str(e)}")
+            print(f"❌ Topic extraction error: {str(e)}")
             return []
 
     def summarize_conversation(self, transcript: str) -> str:
