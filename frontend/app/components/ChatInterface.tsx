@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { FaMicrophone, FaStop, FaPaperPlane, FaTrash, FaPlay, FaPause } from 'react-icons/fa'
 
 export default function ChatInterface() {
@@ -10,6 +10,8 @@ export default function ChatInterface() {
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null)
   const [isPlaying, setIsPlaying] = useState(false)
   const [audioUrl, setAudioUrl] = useState<string | null>(null)
+  const [progress, setProgress] = useState(0)
+  const [isSending, setIsSending] = useState(false)
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
@@ -87,33 +89,94 @@ export default function ChatInterface() {
   }
 
   const playAudio = () => {
-    if (!audioRef.current) return
-    
-    console.log('Playing audio...')
-    audioRef.current.play()
-      .then(() => {
-        setIsPlaying(true)
-        console.log('Audio playing')
-      })
-      .catch(err => console.error('Playback error:', err))
+    if (audioRef.current) {
+      audioRef.current.play()
+      setIsPlaying(true)
+    }
   }
 
   const pauseAudio = () => {
-    if (!audioRef.current) return
-    
-    console.log('Pausing audio...')
-    audioRef.current.pause()
-    setIsPlaying(false)
+    if (audioRef.current) {
+      audioRef.current.pause()
+      setIsPlaying(false)
+    }
   }
 
   const discardRecording = () => {
-    if (audioUrl) {
-      URL.revokeObjectURL(audioUrl)
-    }
-    setAudioUrl(null)
     setAudioBlob(null)
+    setAudioUrl(null)
+    setProgress(0)
     setIsPlaying(false)
-    audioRef.current = null
+  }
+
+  useEffect(() => {
+    if (!audioRef.current) return
+
+    const updateProgress = () => {
+      const audio = audioRef.current
+      if (audio) {
+        setProgress((audio.currentTime / audio.duration) * 100)
+      }
+    }
+
+    audioRef.current.addEventListener('timeupdate', updateProgress)
+    return () => audioRef.current?.removeEventListener('timeupdate', updateProgress)
+  }, [audioUrl])
+
+  const handleSendAudio = async () => {
+    if (!audioBlob) return
+    setIsSending(true)
+  
+    try {
+      // Create a new File from the Blob with proper MIME type
+      const audioFile = new File([audioBlob], 'recording.webm', { 
+        type: audioBlob.type 
+      })
+  
+      const formData = new FormData()
+      formData.append('audio', audioFile)
+  
+      // Update the API endpoint URL to match your Django setup
+      const response = await fetch('http://localhost:8000/api/voice-input/', {
+        method: 'POST',
+        body: formData,
+        // Add CORS headers
+        headers: {
+          'Accept': 'application/json',
+        },
+      })
+  
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`)
+      }
+  
+      const data = await response.json()
+      console.log('Server response:', data)
+  
+      if (data.transcript) {
+        setInput(data.transcript)
+        discardRecording()
+        // Add the transcribed text to messages
+        setMessages(prev => [...prev, { 
+          type: 'user', 
+          content: data.transcript 
+        }])
+        
+        // If there's an AI response, add it too
+        if (data.response) {
+          setMessages(prev => [...prev, { 
+            type: 'ai', 
+            content: data.response 
+          }])
+        }
+      }
+    } catch (err) {
+      console.error('Error sending audio:', err)
+      // You might want to show an error message to the user here
+    } finally {
+      setIsSending(false)
+    }
   }
 
   return (
@@ -131,24 +194,53 @@ export default function ChatInterface() {
         ))}
       </div>
 
-      {/* Audio Preview */}
+      {/* Audio Preview with Progress Bar */}
       {audioBlob && (
-        <div className="p-4 border-t border-gray-700 flex items-center space-x-2">
-          <button
-            onClick={isPlaying ? pauseAudio : playAudio}
-            className="p-2 rounded-full bg-blue-500 hover:opacity-80"
-          >
-            {isPlaying ? <FaPause /> : <FaPlay />}
-          </button>
-          <div className="flex-1 text-gray-300 text-sm">
-            {audioBlob.size} bytes recorded
+        <div className="p-4 border-t border-gray-700">
+          <div className="flex items-center space-x-2 mb-2">
+            <button
+              onClick={isPlaying ? pauseAudio : playAudio}
+              className="p-2 rounded-full bg-blue-500 hover:opacity-80"
+            >
+              {isPlaying ? <FaPause /> : <FaPlay />}
+            </button>
+            
+            {/* Progress Bar */}
+            <div className="flex-1 bg-gray-700 h-2 rounded-full">
+              <div 
+                className="bg-blue-500 h-full rounded-full transition-all duration-100"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+
+            <button
+              onClick={handleSendAudio}
+              disabled={isSending}
+              className={`p-2 rounded-full ${
+                isSending ? 'bg-gray-500' : 'bg-green-500 hover:opacity-80'
+              }`}
+            >
+              {isSending ? (
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <FaPaperPlane />
+              )}
+            </button>
+            
+            <button
+              onClick={discardRecording}
+              className="p-2 rounded-full bg-red-500 hover:opacity-80"
+            >
+              <FaTrash />
+            </button>
           </div>
-          <button
-            onClick={discardRecording}
-            className="p-2 rounded-full bg-red-500 hover:opacity-80"
-          >
-            <FaTrash />
-          </button>
+
+          {/* Time Display */}
+          <div className="text-sm text-gray-400 text-center">
+            {audioRef.current && !isNaN(audioRef.current.duration) && (
+              `${Math.floor(audioRef.current.currentTime)}s / ${Math.floor(audioRef.current.duration)}s`
+            )}
+          </div>
         </div>
       )}
 

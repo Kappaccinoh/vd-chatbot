@@ -13,73 +13,115 @@ from .utils.validators import validate_audio_file
 @api_view(['POST'])
 def voice_input(request):
     """Handle voice input: STT → Save → Process → TTS"""
+    print("\n=== Starting Voice Input Processing ===")
+
+    DEV_USER_ID = 1
+    
     try:
         # Validate audio input
+        print("1. Checking audio file...")
         audio_file = request.FILES.get('audio')
         if not audio_file:
+            print("❌ No audio file found in request")
             return Response(
                 {'error': 'No audio file provided'}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
+        print(f"✓ Audio file received: {audio_file.name}, Size: {audio_file.size} bytes")
         validate_audio_file(audio_file)
+        print("✓ Audio file validated")
 
         # Initialize services
+        print("\n2. Initializing services...")
         stt_service = STTService()
         conv_service = ConversationService()
         openai_service = OpenAIService()
         tts_service = TTSService()
         graph_service = KnowledgeGraphService()
+        print("✓ All services initialized")
 
         # 1. Convert speech to text
+        print("\n3. Converting speech to text...")
         user_input = stt_service.transcribe(audio_file)
         if not user_input:
+            print("❌ Transcription failed - no text produced")
             return Response(
                 {'error': 'Could not transcribe audio'}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
+        print(f"✓ Transcription successful: '{user_input}'")
 
         # 2. Save initial conversation
+        print("\n4. Saving conversation...")
+        # user_id = request.data.get('user_id')
+        user_id = DEV_USER_ID
+        print(f"User ID: {user_id}")
         conversation = conv_service.save_conversation(
-            request.data.get('user_id'),
+            user_id,
             f"User: {user_input}"
         )
+        print(f"✓ Conversation saved with ID: {conversation.id}")
 
         # 3. Generate AI response
+        print("\n5. Generating AI response...")
         ai_response = openai_service.generate_response(user_input)
+        print(f"✓ AI response generated: '{ai_response}'")
         
         # 4. Update conversation with AI response
+        print("\n6. Updating conversation...")
         conversation = conv_service.update_conversation(
             conversation.id,
             f"AI: {ai_response}"
         )
+        print("✓ Conversation updated with AI response")
 
         # 5. Process knowledge graph
-        topics = openai_service.extract_topics(user_input + " " + ai_response)
+        print("\n7. Processing knowledge graph...")
+        full_text = f"{user_input} {ai_response}"
+        print(f"Extracting topics from: '{full_text}'")
+        topics = openai_service.extract_topics(full_text)
+        print(f"✓ Topics extracted: {topics}")
+        
         graph_data = graph_service.process_topics(topics, conversation.id)
+        print("✓ Graph data processed")
         
         # 6. Save knowledge graph
+        print("\n8. Saving knowledge graph...")
         knowledge_graph = KnowledgeGraph.objects.create(
             conversation_id=conversation.id,
             graph_data=graph_data
         )
+        print(f"✓ Knowledge graph saved with ID: {knowledge_graph.id}")
 
         # 7. Convert AI response to speech
+        print("\n9. Converting response to speech...")
         audio_response = tts_service.synthesize_speech(ai_response)
+        print("✓ Speech synthesis completed")
 
+        # Convert binary audio data to base64 for JSON serialization
+        import base64
+        audio_response_b64 = base64.b64encode(audio_response).decode('utf-8')
+
+        print("\n=== Processing Complete ===")
         return Response({
             'conversation_id': conversation.id,
             'transcript': user_input,
             'response': ai_response,
-            'audio_response': audio_response,
+            'audio_response': audio_response_b64,  # Send as base64
             'graph_id': knowledge_graph.id
         }, status=status.HTTP_201_CREATED)
 
     except ValueError as e:
+        print(f"\n❌ Validation Error: {str(e)}")
         return Response(
             {'error': str(e)}, 
             status=status.HTTP_400_BAD_REQUEST
         )
     except Exception as e:
+        print(f"\n❌ Unexpected Error: {str(e)}")
+        print("Traceback:")
+        import traceback
+        traceback.print_exc()
         return Response(
             {'error': str(e)}, 
             status=status.HTTP_500_INTERNAL_SERVER_ERROR

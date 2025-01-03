@@ -138,3 +138,9 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 GOOGLE_APPLICATION_CREDENTIALS = os.environ.get('GOOGLE_APPLICATION_CREDENTIALS')
 
 OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
+
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+]
+
+CORS_ALLOW_CREDENTIALS = True

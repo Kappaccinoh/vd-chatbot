@@ -7,7 +7,18 @@ class ConversationService:
             user_id=user_id,
             transcript=transcript
         )
+    
+    @staticmethod
+    def update_conversation(conversation_id, new_content):
+        try:
+            conversation = Conversation.objects.get(id=conversation_id)
+            conversation.transcript += f"\n{new_content}"
+            conversation.save()
+            return conversation
+        except Conversation.DoesNotExist:
+            raise Exception(f"Conversation {conversation_id} not found")
 
+    
     @staticmethod
     def save_knowledge_graph(conversation_id, graph_data):
         return KnowledgeGraph.objects.create(
