@@ -5,5 +5,5 @@ urlpatterns = [
     path('voice-input/', views.voice_input, name='voice-input'),
     path('chat-response/', views.chat_response, name='chat-response'),
     path('voice-output/', views.voice_output, name='voice-output'),
-    path('knowledge-graph/', views.knowledge_graph, name='knowledge-graph'),
+    path('knowledge-graph/', views.get_knowledge_graph, name='knowledge-graph'),
 ]
